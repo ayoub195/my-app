@@ -29,15 +29,12 @@ if (!getApps().length) {
   });
 }
 
-interface PageProps {
-  params: {
-    id: string;
-  };
-  searchParams: { [key: string]: string | string[] | undefined };
-}
-
-export default async function OrderDetailPage(props: PageProps) {
-  const id = props.params.id;
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const id = params.id;
   
   try {
     const db = getFirestore();
