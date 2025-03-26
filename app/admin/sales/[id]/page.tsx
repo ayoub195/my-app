@@ -1,38 +1,18 @@
+import { Metadata } from 'next';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getApp, getApps, initializeApp, cert } from 'firebase-admin/app';
 import OrderDetailView from '../components/OrderDetailView';
 
-interface OrderData {
-  id: string;
-  product: {
-    name: string;
-  };
-  firstName: string;
-  lastName: string;
-  email: string;
-  phoneNumber: string;
-  amount: number;
-  status: 'pending' | 'completed' | 'declined' | 'confirmed';
-  createdAt: {
-    seconds: number;
-  };
-}
-
-// Initialize Firebase Admin if it hasn't been initialized
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
+export const metadata: Metadata = {
+  title: 'Order Details',
+  description: 'View order details and manage order status',
+};
 
 export default async function OrderDetailPage({
   params,
 }: {
   params: { id: string };
+  searchParams?: { [key: string]: string | string[] | undefined };
 }) {
   const id = params.id;
   
@@ -51,7 +31,7 @@ export default async function OrderDetailPage({
     console.log('Raw Firestore Data:', JSON.stringify(data, null, 2));
 
     // Create a plain JavaScript object with only the data we need
-    const order: OrderData = {
+    const order = {
       id: orderSnap.id,
       product: {
         name: data?.productName || 'N/A'
