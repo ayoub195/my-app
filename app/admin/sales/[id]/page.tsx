@@ -36,7 +36,11 @@ interface PageProps {
   searchParams: { [key: string]: string | string[] | undefined };
 }
 
-export default async function OrderDetailPage({ params }: PageProps) {
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const id = params.id;
   
   try {
