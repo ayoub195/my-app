@@ -8,14 +8,14 @@ export const metadata: Metadata = {
   description: 'View order details and manage order status',
 };
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-  searchParams: { [key: string]: string | string[] | undefined };
-}
+type PageParams = {
+  id: string;
+};
 
-export default async function OrderDetailPage(props: PageProps) {
-  const params = await props.params;
-  const id = params.id;
+export default async function OrderDetailPage(props: {
+  params: PageParams;
+}) {
+  const id = props.params.id;
   
   try {
     const db = getFirestore();
