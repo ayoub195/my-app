@@ -1,0 +1,284 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+I'll help you understand how IntaSend is integrated by scanning the codebase and providing a step-by-step guide. Let me first search for IntaSend-related files and implementations.
+
+Based on the codebase analysis, I'll provide a comprehensive step-by-step guide on how to integrate IntaSend payment into a Next.js application. Here's the detailed implementation guide:
+
+### Step 1: Install Required Dependencies
+```bash
+npm install intasend-node
+# or
+yarn add intasend-node
+```
+
+### Step 2: Set Up Environment Variables
+Create or update your `.env.local` file with IntaSend credentials:
+```env
+NEXT_PUBLIC_INTASEND_API_KEY=your_public_api_key
+NEXT_PUBLIC_INTASEND_SECRET_KEY=your_secret_key
+NEXT_PUBLIC_INTASEND_WEBHOOK_SECRET=your_webhook_secret
+```
+
+### Step 3: Create IntaSend API Integration Layer
+Create a file `lib/intasend-api.ts` for direct API integration:
+
+```typescript
+const API_KEY = process.env.NEXT_PUBLIC_INTASEND_API_KEY;
+const SECRET_KEY = process.env.NEXT_PUBLIC_INTASEND_SECRET_KEY;
+
+const IS_LIVE = API_KEY?.includes('_live_') || SECRET_KEY?.includes('_live_');
+const BASE_URL = IS_LIVE
+  ? 'https://payment.intasend.com/api/v1'
+  : 'https://sandbox.intasend.com/api/v1';
+
+export const createCheckout = async (params: {
+  amount: number;
+  currency?: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone_number?: string;
+  reference?: string;
+  comment?: string;
+}) => {
+  try {
+    if (!API_KEY || !SECRET_KEY) {
+      throw new Error('IntaSend API credentials not found');
+    }
+
+    const url = `${BASE_URL}/checkout/`;
+    const requestBody = {
+      public_key: API_KEY,
+      amount: params.amount,
+      currency: params.currency || 'USD',
+      email: params.email,
+      first_name: params.first_name,
+      last_name: params.last_name,
+      phone_number: params.phone_number || '',
+      reference: params.reference || `Order-${Date.now()}`,
+      comment: params.comment || 'Payment for products'
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || `Error ${response.status}`);
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Checkout failed'
+    };
+  }
+};
+```
+
+### Step 4: Create a Checkout Component
+Create `components/checkout/IntaSendCheckout.tsx`:
+
+```typescript
+import React, { useState } from 'react';
+import { createCheckout } from '@/lib/intasend-api';
+
+interface IntaSendCheckoutProps {
+  amount: number;
+  customerInfo: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+  };
+  orderId?: string;
+  productName: string;
+  onSuccess?: (data: any) => void;
+  onError?: (error: string) => void;
+}
+
+const IntaSendCheckout: React.FC<IntaSendCheckoutProps> = ({
+  amount,
+  customerInfo,
+  orderId,
+  productName,
+  onSuccess,
+  onError,
+}) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCheckout = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await createCheckout({
+        amount,
+        email: customerInfo.email,
+        first_name: customerInfo.firstName,
+        last_name: customerInfo.lastName,
+        phone_number: customerInfo.phoneNumber,
+        reference: orderId || `Order-${Date.now()}`,
+        comment: `Payment for ${productName}`,
+        currency: 'USD'
+      });
+
+      if (response.success && response.data) {
+        const checkoutUrl = response.data.url || response.data.checkout_url;
+        if (checkoutUrl) {
+          if (onSuccess) onSuccess(response.data);
+          window.location.href = checkoutUrl;
+        } else {
+          throw new Error('No checkout URL received');
+        }
+      } else {
+        throw new Error(response.error || 'Checkout failed');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Checkout failed';
+      setError(errorMessage);
+      if (onError) onError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCheckout}
+      disabled={isLoading}
+      className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+    >
+      {isLoading ? 'Processing...' : 'Pay Now'}
+    </button>
+  );
+};
+
+export default IntaSendCheckout;
+```
+
+### Step 5: Set Up Webhook Handler
+Create `app/api/webhooks/intasend/route.ts`:
+
+```typescript
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/firebase'; // Assuming Firebase is used for storage
+
+export async function POST(request: Request) {
+  try {
+    const rawBody = await request.text();
+    const body = JSON.parse(rawBody);
+    
+    // Verify webhook signature if available
+    const signature = request.headers.get('x-intasend-signature');
+    
+    // Handle different event types
+    switch (body.event) {
+      case 'payment.completed':
+      case 'payment.complete':
+        await handlePaymentCompleted(body.data);
+        break;
+      case 'payment.failed':
+        await handlePaymentFailed(body.data);
+        break;
+      case 'payment.pending':
+        await handlePaymentPending(body.data);
+        break;
+    }
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Webhook processing failed' },
+      { status: 500 }
+    );
+  }
+}
+
+async function handlePaymentCompleted(data: any) {
+  // Update your database with payment information
+  const paymentRef = collection(db, 'payments');
+  await addDoc(paymentRef, {
+    invoiceId: data.invoice.invoice_id,
+    reference: data.invoice.reference,
+    amount: parseFloat(data.invoice.amount),
+    status: 'completed',
+    // ... other payment details
+    createdAt: serverTimestamp()
+  });
+}
+```
+
+### Step 6: Usage Example
+Here's how to use the IntaSend checkout in a page:
+
+```typescript
+import IntaSendCheckout from '@/components/checkout/IntaSendCheckout';
+
+export default function CheckoutPage() {
+  const handlePaymentSuccess = (data: any) => {
+    console.log('Payment initiated:', data);
+  };
+
+  const handlePaymentError = (error: string) => {
+    console.error('Payment error:', error);
+  };
+
+  return (
+    <div>
+      <h1>Checkout</h1>
+      <IntaSendCheckout
+        amount={99.99}
+        customerInfo={{
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'john@example.com',
+          phoneNumber: '+1234567890'
+        }}
+        productName="Premium Package"
+        onSuccess={handlePaymentSuccess}
+        onError={handlePaymentError}
+      />
+    </div>
+  );
+}
+```
+
+### Step 7: Testing Setup
+1. Use sandbox credentials during development
+2. Test both successful and failed payment scenarios
+3. Verify webhook handling with test events
+4. Monitor the payment flow in the IntaSend dashboard
+
+### Important Notes:
+1. Always use environment variables for API keys
+2. Implement proper error handling
+3. Use TypeScript interfaces for type safety
+4. Handle both sandbox and live environments
+5. Implement proper webhook signature verification in production
+6. Store payment records in your database
+7. Implement proper error notifications and logging
+8. Handle different currencies appropriately
+9. Implement proper loading states and user feedback
+
+This implementation provides a robust foundation for integrating IntaSend payments into your Next.js application. The code is structured to be maintainable, type-safe, and follows best practices for payment integration.
+
