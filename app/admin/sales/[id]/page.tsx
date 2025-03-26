@@ -8,12 +8,13 @@ export const metadata: Metadata = {
   description: 'View order details and manage order status',
 };
 
-type Props = {
-  params: { id: string };
+interface PageProps {
+  params: Promise<{ id: string }>;
   searchParams: { [key: string]: string | string[] | undefined };
-};
+}
 
-export default async function OrderDetailPage({ params }: Props) {
+export default async function OrderDetailPage(props: PageProps) {
+  const params = await props.params;
   const id = params.id;
   
   try {
