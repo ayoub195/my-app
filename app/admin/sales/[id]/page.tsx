@@ -36,12 +36,8 @@ interface PageProps {
   searchParams: { [key: string]: string | string[] | undefined };
 }
 
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const id = params.id;
+export default async function OrderDetailPage(props: PageProps) {
+  const id = props.params.id;
   
   try {
     const db = getFirestore();
