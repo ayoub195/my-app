@@ -8,12 +8,12 @@ export const metadata: Metadata = {
   description: 'View order details and manage order status',
 };
 
-export default async function OrderDetailPage({
-  params,
-}: {
+type Props = {
   params: { id: string };
-  searchParams?: { [key: string]: string | string[] | undefined };
-}) {
+  searchParams: { [key: string]: string | string[] | undefined };
+};
+
+export default async function OrderDetailPage({ params }: Props) {
   const id = params.id;
   
   try {
